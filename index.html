@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Ginie's Planner — Personal Life Planner</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap&font-display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#0e0f14;--bg2:#141620;--bg3:#1c1e2a;--bg4:#242736;
@@ -19,8 +19,20 @@
   --teal:#38d9c0;--teal2:rgba(56,217,192,0.15);
   --r:12px;--rs:8px;
 }
+body.light-mode{
+  --bg:#f5f6fa;--bg2:#ffffff;--bg3:#eef0f7;--bg4:#e3e6f0;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
+  --text:#1a1b26;--text2:#4a4d62;--text3:#9395a5;
+  --accent:#6c63ff;--accent2:#5a52e0;--accent3:rgba(108,99,255,0.12);
+  --green:#2daa6f;--green2:rgba(45,170,111,0.12);
+  --red:#d94f38;--red2:rgba(217,79,56,0.12);
+  --amber:#d4880a;--amber2:rgba(212,136,10,0.12);
+  --blue:#2e7ed4;--blue2:rgba(46,126,212,0.12);
+  --pink:#c4527f;--pink2:rgba(196,82,127,0.12);
+  --teal:#23b09e;--teal2:rgba(35,176,158,0.12);
+}
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none;}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);display:flex;}
 
 /* SYNC STATUS BAR */
@@ -286,6 +298,11 @@ select option{background:var(--bg3);}
   .g3{grid-template-columns:1fr 1fr;}
   .g2{grid-template-columns:1fr;}
   #content{padding:16px 14px;}
+  /* Larger tap targets for habits on mobile */
+  .hdot{width:40px;height:40px;border-radius:8px;font-size:12px;}
+  /* Timer mobile layout */
+  .timer-num{font-size:52px;padding:16px 0 12px;}
+  .timer-ring{width:160px;height:160px;}
 }
 </style>
 </head>
@@ -358,6 +375,9 @@ select option{background:var(--bg3);}
     </div>
     <div class="topbtns">
       <button class="btn btn-g btn-sm" id="export-btn">⬇ Export</button>
+      <button class="btn btn-g btn-sm" id="import-btn">⬆ Import</button>
+      <input type="file" id="import-file" accept=".json" style="display:none;">
+      <button class="btn btn-g btn-sm" id="theme-btn" title="Toggle light/dark mode">🌙</button>
       <button class="btn btn-sm" id="add-btn">+ Add</button>
       <button id="logout-btn" style="display:none;align-items:center;gap:8px;background:transparent;border:1px solid var(--border2);color:var(--text2);border-radius:var(--rs);padding:5px 11px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;" title="Sign out">
         <img id="user-avatar" style="width:22px;height:22px;border-radius:50%;display:none;" src="">
@@ -660,7 +680,7 @@ select option{background:var(--bg3);}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc }
   from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
 
 // ── YOUR FIREBASE CONFIG ──────────────────────────────
@@ -678,6 +698,9 @@ const db       = getFirestore(app);
 const auth     = getAuth(app);
 const provider = new GoogleAuthProvider();
 
+// Handle redirect result on page load (Android WebView)
+getRedirectResult(auth).catch(e => console.error("Redirect error:", e));
+
 let currentUser = null;
 let docRef      = null;
 
@@ -693,61 +716,27 @@ const QUOTES = [
   "The only way to do great work is to love what you do. — Jobs"
 ];
 
-const DEFAULT_DATA = {
-  habits:[
-    {id:1,name:"Morning Meditation",emoji:"🧘",streak:5,days:[1,1,1,1,1,0,0]},
-    {id:2,name:"Read 20 Minutes",emoji:"📚",streak:12,days:[1,1,1,0,1,1,0]},
-    {id:3,name:"Exercise",emoji:"💪",streak:3,days:[1,0,1,1,0,0,0]},
-    {id:4,name:"No Social Media 9-12",emoji:"📵",streak:2,days:[1,1,0,1,0,0,0]}
-  ],
-  tasks:[
-    {id:1,text:"Complete project proposal",priority:"high",done:false,due:"2025-09-15"},
-    {id:2,text:"Call Mom",priority:"medium",done:false,due:""},
-    {id:3,text:"Buy groceries",priority:"low",done:true,due:""},
-    {id:4,text:"Review quarterly goals",priority:"high",done:false,due:""},
-    {id:5,text:"Send invoice to client",priority:"medium",done:false,due:""}
-  ],
-  journal:[
-    {id:1,date:"2025-08-30",mood:4,emoji:"🙂",text:"Had a productive day. Finished the design work and went for a run.",tags:["Productive","Happy"]}
-  ],
-  goals:[
-    {id:1,title:"Run a 5K",category:"health",target:5,current:3.2,unit:"km",deadline:"2025-12-31"},
-    {id:2,title:"Save ₹1,00,000",category:"finance",target:100000,current:42000,unit:"₹",deadline:"2025-12-31"},
-    {id:3,title:"Read 24 books",category:"personal",target:24,current:11,unit:"books",deadline:"2025-12-31"},
-    {id:4,title:"Get a promotion",category:"career",target:10,current:6,unit:"steps",deadline:"2025-12-31"}
-  ],
-  events:[
-    {id:1,name:"Doctor Appointment",date:"2025-09-10",time:"10:00"},
-    {id:2,name:"Team Lunch",date:"2025-09-12",time:"13:00"},
-    {id:3,name:"Yoga Class",date:"2025-09-08",time:"07:00"},
-    {id:4,name:"Birthday: Rahul",date:"2025-09-15",time:""}
-  ],
-  notes:[
-    {id:1,title:"2025 Life Themes",body:"This year is about depth over breadth. Focus on fewer things but do them with full intention.",updated:"2025-08-28"},
-    {id:2,title:"Book Notes: Atomic Habits",body:"The 1% rule. Systems over goals. Identity-based habits. Make it obvious, attractive, easy, satisfying.",updated:"2025-08-20"},
-    {id:3,title:"Morning Routine",body:"6:00 Wake\n6:10 Meditate\n6:25 Journal\n6:40 Exercise\n7:20 Shower\n8:00 Deep work",updated:"2025-08-15"}
-  ],
-  transactions:[
-    {id:1,name:"Salary",amount:55000,type:"income",cat:"💼",date:"2025-09-01"},
-    {id:2,name:"Groceries",amount:-3200,type:"expense",cat:"🛒",date:"2025-09-02"},
-    {id:3,name:"Netflix",amount:-649,type:"expense",cat:"📺",date:"2025-09-03"},
-    {id:4,name:"Freelance",amount:12000,type:"income",cat:"💻",date:"2025-09-04"},
-    {id:5,name:"Electricity",amount:-1800,type:"expense",cat:"⚡",date:"2025-09-05"}
-  ],
-  books:[
-    {id:1,title:"Atomic Habits",author:"James Clear",status:"done",emoji:"🧠"},
-    {id:2,title:"Deep Work",author:"Cal Newport",status:"reading",emoji:"💡"},
-    {id:3,title:"Almanack of Naval",author:"Eric Jorgenson",status:"want",emoji:"🚀"},
-    {id:4,title:"Sapiens",author:"Yuval Noah Harari",status:"done",emoji:"🌍"}
-  ],
-  gratitude:[
-    {id:1,date:"2025-08-30",items:["The morning quiet and chai","My supportive family","A peaceful afternoon"]}
-  ],
-  water:3, focusMin:0, sessions:0,
-  moodEmoji:"", moodWeek:[3,4,5,4,3,0,0],
+// DEFAULT_DATA uses daysFromNow() so dates are always relative to today
+function buildDefaultData(){
+  return {
+  habits:[],
+  tasks:[],
+  journal:[],
+  goals:[],
+  events:[],
+  notes:[],
+  transactions:[],
+  books:[],
+  gratitude:[],
+  water:0, focusMin:0, sessions:0,
+  moodEmoji:"", moodWeek:[0,0,0,0,0,0,0],
   calY:new Date().getFullYear(), calM:new Date().getMonth(),
-  steps:6240, calories:1840, sleepH:7.5, sleepQ:"Good"
-};
+  steps:0, calories:0, sleepH:0, sleepQ:"",
+  lastStreakCheck: TODAY_STR,
+  isNewUser: true
+  };
+}
+const DEFAULT_DATA = buildDefaultData();
 
 // ── STATE ─────────────────────────────────────────────
 let S = JSON.parse(JSON.stringify(DEFAULT_DATA));
@@ -796,6 +785,11 @@ const NOW = new Date();
 const TODAY_DOW = (NOW.getDay()+6)%7;
 const TODAY_STR = NOW.toISOString().split("T")[0];
 
+function daysFromNow(n){
+  const d=new Date(NOW); d.setDate(d.getDate()+n);
+  return d.toISOString().split("T")[0];
+}
+
 document.getElementById("pg-date").textContent =
   NOW.toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
 
@@ -815,7 +809,22 @@ function goTo(p){
   document.getElementById("pg-title").textContent = PAGE_TITLES[p];
   render[p] && render[p]();
   if(window.innerWidth<=720) document.getElementById("sidebar").classList.remove("open");
+  // Push history state so Android back button works
+  history.pushState({page:p}, "", "#"+p);
 }
+
+// Handle Android/browser back button
+window.addEventListener("popstate",(e)=>{
+  if(e.state&&e.state.page){
+    const p=e.state.page;
+    document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("on"));
+    document.querySelector(`.nav-item[data-p="${p}"]`).classList.add("on");
+    document.querySelectorAll(".page").forEach(pg=>pg.classList.remove("on"));
+    document.getElementById("pg-"+p).classList.add("on");
+    document.getElementById("pg-title").textContent = PAGE_TITLES[p];
+    render[p] && render[p]();
+  }
+});
 
 document.getElementById("nav").addEventListener("click",e=>{
   const item=e.target.closest(".nav-item");
@@ -833,6 +842,9 @@ function openModal(title,html,onSave){
   document.getElementById("modal-title").textContent=title;
   document.getElementById("modal-body").innerHTML=html;
   modalCb=onSave;
+  // Reset buttons to default state
+  document.getElementById("modal-save").style.display="";
+  document.getElementById("modal-cancel").textContent="Cancel";
   overlay.classList.add("on");
   const f=document.getElementById("modal-body").querySelector("input,textarea,select");
   if(f) setTimeout(()=>f.focus(),80);
@@ -849,7 +861,42 @@ document.getElementById("export-btn").addEventListener("click",()=>{
   a.download="Ginie's Planner-backup.json"; a.click();
 });
 
-// ── ADD BUTTON ────────────────────────────────────────
+// ── IMPORT ────────────────────────────────────────────
+document.getElementById("import-btn").addEventListener("click",()=>{
+  document.getElementById("import-file").click();
+});
+document.getElementById("import-file").addEventListener("change",(e)=>{
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=(ev)=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(!data.habits||!data.tasks){ alert("Invalid backup file."); return; }
+      if(confirm("This will replace all your current data with the backup. Continue?")){
+        S=Object.assign(JSON.parse(JSON.stringify(DEFAULT_DATA)),data);
+        save();
+        render.dashboard(); render.calendar(); render.focus(); updateTimerDisplay();
+        openModal("Import Successful ✓",`<p style="font-size:14px;color:var(--text2);line-height:1.8;">Your backup has been restored successfully!</p>`,null);
+        document.getElementById("modal-save").style.display="none";
+        document.getElementById("modal-cancel").textContent="Done";
+      }
+    } catch(_){ alert("Could not read file. Make sure it's a valid JSON backup."); }
+    e.target.value="";
+  };
+  reader.readAsText(file);
+});
+
+// ── THEME TOGGLE ──────────────────────────────────────
+(function(){
+  const btn=document.getElementById("theme-btn");
+  const saved=localStorage.getItem("ginie-theme");
+  if(saved==="light"){ document.body.classList.add("light-mode"); btn.textContent="☀️"; }
+  btn.addEventListener("click",()=>{
+    const isLight=document.body.classList.toggle("light-mode");
+    btn.textContent=isLight?"☀️":"🌙";
+    localStorage.setItem("ginie-theme",isLight?"light":"dark");
+  });
+})();
 const addActions={
   dashboard:()=>openHabitModal(), habits:()=>openHabitModal(),
   tasks:()=>openTaskModal(), journal:()=>document.getElementById("j-input").focus(),
@@ -951,7 +998,11 @@ render.habits=function(){
 
 function toggleHabitDay(id,day){
   const h=S.habits.find(h=>h.id===id); if(!h) return;
-  h.days[day]=h.days[day]?0:1; h.streak=h.days.filter(Boolean).length;
+  h.days[day]=h.days[day]?0:1;
+  // Recalculate streak: count consecutive days ending at TODAY_DOW
+  let streak=0;
+  for(let i=TODAY_DOW;i>=0;i--){ if(h.days[i]) streak++; else break; }
+  h.streak=streak;
   save(); render.habits();
 }
 
@@ -994,7 +1045,7 @@ render.tasks=function(){
     el.onclick=()=>{ const t=S.tasks.find(x=>x.id===+el.dataset.tid); if(t){ t.done=!t.done; save(); render.tasks(); render.dashboard(); } };
   });
   tl.querySelectorAll(".del-btn[data-tdel]").forEach(el=>{
-    el.onclick=()=>{ S.tasks=S.tasks.filter(t=>t.id!==+el.dataset.tdel); save(); render.tasks(); render.dashboard(); };
+    el.onclick=()=>{ if(confirm("Delete this task?")){ S.tasks=S.tasks.filter(t=>t.id!==+el.dataset.tdel); save(); render.tasks(); render.dashboard(); } };
   });
 };
 document.querySelectorAll("[data-tf]").forEach(chip=>{
@@ -1079,7 +1130,10 @@ document.getElementById("t-toggle").addEventListener("click",()=>{
           document.getElementById("f-sess").textContent=S.sessions;
           save();
         }
-        alert(tMode==="FOCUS"?"Session complete 🎉 Take a break!":"Break over! Time to focus 💪");
+        const msg=tMode==="FOCUS"?"🎉 Session complete! Time for a break.":"💪 Break's over! Let's focus.";
+        openModal(tMode==="FOCUS"?"Session Complete 🎉":"Break Over 💪",`<p style="font-size:15px;color:var(--text2);line-height:1.8;">${msg}</p>`,null);
+        document.getElementById("modal-save").style.display="none";
+        document.getElementById("modal-cancel").textContent="Close";
       } else { tSec--; updateTimerDisplay(); }
     },1000);
   }
@@ -1176,7 +1230,21 @@ render.calendar=function(){
   document.querySelectorAll(".cd[data-cd]").forEach(el=>{
     el.addEventListener("click",()=>{
       const evs=S.events.filter(e=>e.date===el.dataset.cd);
-      if(evs.length) alert(evs.map(e=>e.name+(e.time?" @ "+e.time:"")).join("\n"));
+      if(evs.length){
+        const dateLabel=new Date(el.dataset.cd+"T00:00:00").toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"});
+        openModal("Events — "+dateLabel,
+          evs.map(e=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:18px;">📅</span>
+            <div><div style="font-size:14px;font-weight:500;">${e.name}</div>
+            ${e.time?`<div style="font-size:12px;color:var(--text3);margin-top:2px;">⏰ ${e.time}</div>`:"<div style='font-size:12px;color:var(--text3);margin-top:2px;'>All day</div>"}</div></div>`).join(""),
+          null
+        );
+        document.getElementById("modal-save").style.display="none";
+        document.getElementById("modal-cancel").textContent="Close";
+      } else {
+        document.getElementById("modal-save").style.display="";
+        document.getElementById("modal-cancel").textContent="Cancel";
+      }
     });
   });
   const evl=document.getElementById("ev-list");
@@ -1306,7 +1374,7 @@ render.finance=function(){
       <button class="del-btn" data-txdel="${t.id}">×</button>
     </div>`).join("")||emptyMsg("No transactions yet");
   txl.querySelectorAll(".del-btn[data-txdel]").forEach(el=>{
-    el.onclick=()=>{ S.transactions=S.transactions.filter(t=>t.id!==+el.dataset.txdel); save(); render.finance(); };
+    el.onclick=()=>{ if(confirm("Delete this transaction?")){ S.transactions=S.transactions.filter(t=>t.id!==+el.dataset.txdel); save(); render.finance(); } };
   });
   const cats={};
   S.transactions.filter(t=>t.amount<0).forEach(t=>{ cats[t.name]=(cats[t.name]||0)+Math.abs(t.amount); });
@@ -1361,7 +1429,7 @@ render.reading=function(){
     sel.addEventListener("change",()=>{ const bk=S.books.find(b=>b.id===+sel.dataset.bkid); if(bk){ bk.status=sel.value; save(); render.reading(); } });
   });
   bl.querySelectorAll(".del-btn[data-bkdel]").forEach(el=>{
-    el.onclick=()=>{ S.books=S.books.filter(b=>b.id!==+el.dataset.bkdel); save(); render.reading(); };
+    el.onclick=()=>{ if(confirm("Delete this book?")){ S.books=S.books.filter(b=>b.id!==+el.dataset.bkdel); save(); render.reading(); } };
   });
 };
 function openBookModal(){
@@ -1433,14 +1501,48 @@ async function loadUserData(){
     if(snap.exists()){
       S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_DATA)), snap.data());
       loadMsg.textContent = "Data loaded ✓";
+      // STREAK RESET: if last check wasn't today, check for missed days
+      if(S.lastStreakCheck && S.lastStreakCheck !== TODAY_STR){
+        const last = new Date(S.lastStreakCheck+"T00:00:00");
+        const today = new Date(TODAY_STR+"T00:00:00");
+        const diffDays = Math.round((today - last) / 86400000);
+        if(diffDays > 1){
+          const yesterdayDow = (TODAY_DOW + 6) % 7;
+          S.habits.forEach(h=>{ if(!h.days[yesterdayDow]) h.streak = 0; });
+        }
+        S.lastStreakCheck = TODAY_STR;
+      }
     } else {
       loadMsg.textContent = "First time setup...";
+      S.isNewUser = true;
+      S.lastStreakCheck = TODAY_STR;
       await setDoc(docRef, S);
     }
     setTimeout(()=>{
       document.getElementById("loading").style.display = "none";
       render.dashboard(); render.calendar(); render.focus(); updateTimerDisplay();
       syncUI("live");
+      // Show onboarding for new users
+      if(S.isNewUser){
+        S.isNewUser=false; save();
+        openModal("Welcome to Ginie's Planner 🌟",`
+          <p style="font-size:14px;color:var(--text2);line-height:1.8;margin-bottom:16px;">Your personal life planner is ready! Here's how to get started:</p>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg3);border-radius:var(--rs);">
+              <span style="font-size:22px;">🧘</span><div><div style="font-size:13px;font-weight:500;">Add your first habit</div><div style="font-size:12px;color:var(--text3);">Track daily habits and build streaks</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg3);border-radius:var(--rs);">
+              <span style="font-size:22px;">✅</span><div><div style="font-size:13px;font-weight:500;">Set a task or goal</div><div style="font-size:12px;color:var(--text3);">Plan your day and track bigger objectives</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg3);border-radius:var(--rs);">
+              <span style="font-size:22px;">📓</span><div><div style="font-size:13px;font-weight:500;">Log your mood & journal</div><div style="font-size:12px;color:var(--text3);">Reflect on your day and track how you feel</div></div>
+            </div>
+          </div>`,
+          null
+        );
+        document.getElementById("modal-save").style.display="none";
+        document.getElementById("modal-cancel").textContent="Let's Go! 🚀";
+      }
     }, 400);
   } catch(e){
     console.error("Load error:", e);
@@ -1455,16 +1557,9 @@ async function loadUserData(){
 
 document.getElementById("google-signin-btn").addEventListener("click", async () => {
   const btn = document.getElementById("google-signin-btn");
-  btn.textContent = "Signing in...";
+  btn.textContent = "Redirecting...";
   btn.disabled = true;
-  try {
-    await signInWithPopup(auth, provider);
-  } catch(e) {
-    console.error("Sign in error:", e);
-    btn.textContent = "Sign in with Google";
-    btn.disabled = false;
-    if(e.code !== "auth/popup-closed-by-user") alert("Sign in failed: " + e.message);
-  }
+  await signInWithRedirect(auth, provider);
 });
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
